@@ -63,8 +63,17 @@ function App() {
         {data && <Dashboard data={data} />}
       </main>
 
-      <footer className="py-6 text-center text-sm text-gray-400 border-t border-gray-200 bg-white">
-        <p>&copy; {new Date().getFullYear()} Desenvolvido por Bruno Pachú</p>
+      {/* Footer */}
+      <footer className="bg-white border-t border-slate-200 mt-auto">
+        <div className="max-w-4xl mx-auto px-4 py-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/ALSA_2019_logo.svg/374px-ALSA_2019_logo.svg.png" alt="Alsa Todi" className="h-6 opacity-80" />
+            <span className="text-sm text-slate-500">© {new Date().getFullYear()} Alsa Todi. Todos os direitos reservados.</span>
+          </div>
+          <div className="text-sm text-slate-400 font-medium">
+            Desenvolvido por Bruno Pachú ®
+          </div>
+        </div>
       </footer>
     </div>
   );

@@ -1,0 +1,5 @@
+{
+  "name": "Analisador de Relatório GO (TML)",
+  "description": "Ferramenta para análise de relatórios operacionais, extração de falhas e geração de estatísticas visuais e exportação Excel.",
+  "requestFramePermissions": []
+}

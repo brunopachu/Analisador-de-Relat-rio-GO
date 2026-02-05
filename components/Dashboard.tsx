@@ -2,7 +2,7 @@ import React from 'react';
 import { ProcessedData } from '../types';
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  LineChart, Line, BarChart, Bar
+  LineChart, Line, BarChart, Bar, ReferenceLine
 } from 'recharts';
 import { AlertCircle, CheckCircle, FileText, Download, Bus, User } from 'lucide-react';
 import { downloadExcel } from '../utils/excelProcessor';
@@ -11,12 +11,56 @@ interface DashboardProps {
   data: ProcessedData;
 }
 
+// Helper to format date for display
+const formatDate = (dateStr: string) => {
+  const str = String(dateStr);
+  
+  // Handle YYYYMMDD (e.g. 20231025)
+  if (/^\d{8}$/.test(str)) {
+    const year = str.substring(0, 4);
+    const month = str.substring(4, 6);
+    const day = str.substring(6, 8);
+    return `${day}/${month}/${year}`;
+  }
+  
+  // Handle YYYY-MM-DD (e.g. 2023-10-25)
+  if (str.includes('-')) {
+    const parts = str.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+  }
+  
+  return str;
+};
+
+// Helper for Axis (Short date DD/MM)
+const formatAxisDate = (dateStr: string) => {
+  const str = String(dateStr);
+  
+  // Handle YYYYMMDD
+  if (/^\d{8}$/.test(str)) {
+    const month = str.substring(4, 6);
+    const day = str.substring(6, 8);
+    return `${day}/${month}`;
+  }
+
+  // Handle YYYY-MM-DD
+  if (str.includes('-')) {
+    const parts = str.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}`;
+    }
+  }
+
+  return str;
+};
+
 // Custom Tooltip for detailed daily info
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const item = payload[0].payload;
-    // Format date from YYYY-MM-DD to DD/MM
-    const dateStr = label ? String(label).split('-').slice(1).join('/') : '';
+    const dateStr = formatDate(label);
     
     return (
       <div 
@@ -55,8 +99,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
 
   // Calculate Data Domain for Line Chart to show small differences
   const minPercent = Math.min(...data.summaryByDay.map(d => d.percentPass));
-  // Round down to nearest whole number, then subtract padding
-  const yAxisMin = Math.floor(minPercent) - 1;
+  
+  // Ensure the domain includes the 97% target line if performance is high
+  // logic: minPercent or 96 (whichever is lower) to ensure 97 line is visible with some padding below
+  const lowestValueOfInterest = Math.min(minPercent, 96.5);
+  const yAxisMin = Math.floor(lowestValueOfInterest) - 1;
   const domainMin = yAxisMin < 0 ? 0 : yAxisMin;
 
   return (
@@ -148,16 +195,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data.summaryByDay} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorPerformance" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10B981" stopOpacity={1}/>
-                    <stop offset="95%" stopColor="#EF4444" stopOpacity={1}/>
-                  </linearGradient>
-                </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="date" 
-                  tickFormatter={(str) => str.split('-').slice(1).join('/')} 
+                  tickFormatter={formatAxisDate} 
                   stroke="#9ca3af"
                   tick={{ fill: '#374151' }}
                   fontSize={12}
@@ -165,6 +206,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
                 />
                 <YAxis 
                   domain={[domainMin, 100]} 
+                  tickCount={10}
                   stroke="#9ca3af" 
                   tick={{ fill: '#374151' }}
                   fontSize={12}
@@ -172,11 +214,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend />
+                <ReferenceLine 
+                  y={97} 
+                  stroke="#dc2626" 
+                  strokeDasharray="3 3" 
+                  label={{ value: 'Meta: 97%', position: 'top', fill: '#dc2626', fontSize: 12, fontWeight: 500 }} 
+                />
                 <Line 
                   type="monotone" 
                   dataKey="percentPass" 
                   name="Cumprimento" 
-                  stroke="url(#colorPerformance)" 
+                  stroke="#002E5D" 
                   strokeWidth={3} 
                   dot={{ strokeWidth: 2, r: 4, fill: 'white', stroke: '#002E5D' }}
                   activeDot={{ r: 6, stroke: '#002E5D', strokeWidth: 2 }}
@@ -195,7 +243,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="date" 
-                  tickFormatter={(str) => str.split('-').slice(1).join('/')} 
+                  tickFormatter={formatAxisDate} 
                   stroke="#9ca3af"
                   tick={{ fill: '#374151' }}
                   fontSize={12}

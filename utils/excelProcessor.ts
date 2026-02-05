@@ -90,8 +90,11 @@ export const processExcelData = (file: File): Promise<ProcessedData> => {
         // 4. Errors by Car
         const carCountMap = new Map<string, number>();
         failures.forEach(row => {
-            const vid = String(row.vehicle_ids || "") || "(vazio)";
-            carCountMap.set(vid, (carCountMap.get(vid) || 0) + 1);
+            const vid = String(row.vehicle_ids || "").trim();
+            // Skip empty or placeholder values
+            if (vid && vid !== "(vazio)") {
+                carCountMap.set(vid, (carCountMap.get(vid) || 0) + 1);
+            }
         });
         const errorsByCar: ErrorCount[] = Array.from(carCountMap.entries())
             .map(([id, count]) => ({ id, count }))
@@ -100,8 +103,11 @@ export const processExcelData = (file: File): Promise<ProcessedData> => {
         // 5. Errors by Driver
         const driverCountMap = new Map<string, number>();
         failures.forEach(row => {
-            const did = String(row.driver_ids || "") || "(vazio)";
-            driverCountMap.set(did, (driverCountMap.get(did) || 0) + 1);
+            const did = String(row.driver_ids || "").trim();
+            // Skip empty or placeholder values
+            if (did && did !== "(vazio)") {
+                driverCountMap.set(did, (driverCountMap.get(did) || 0) + 1);
+            }
         });
         const errorsByDriver: ErrorCount[] = Array.from(driverCountMap.entries())
             .map(([id, count]) => ({ id, count }))

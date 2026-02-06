@@ -321,7 +321,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
                       y={97} 
                       stroke="#dc2626" 
                       strokeDasharray="3 3" 
-                      label={{ value: 'Meta: 97%', position: 'top', fill: '#dc2626', fontSize: 12, fontWeight: 500 }} 
+                      label={{ value: '97%', position: 'top', fill: '#dc2626', fontSize: 12, fontWeight: 500 }} 
                     />
                     <Line 
                       type="monotone" 

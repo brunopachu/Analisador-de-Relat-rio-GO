@@ -28,14 +28,14 @@ const analyzeRawData = (jsonData: RawRow[]): ProcessedData => {
 
   const summaryByDay: DaySummary[] = Array.from(summaryMap.entries()).map(([date, counts]) => {
     const total = counts.pass + counts.fail;
-    const percent = total > 0 ? (counts.pass / total) * 100 : 0;
+    const percent = total > 0 ? (counts.pass / total) : 0;
     return {
       date,
       pass: counts.pass,
       fail: counts.fail,
       total,
       percentPass: percent,
-      percentPassFormatted: percent.toFixed(2).replace('.', ',') + '%'
+      
     };
   }).sort((a, b) => a.date.localeCompare(b.date));
 
@@ -192,10 +192,20 @@ export const downloadExcel = (data: ProcessedData, filename: string = "Relatóri
         "pass_count": d.pass,
         "fail_count": d.fail,
         "total": d.total,
-        "percent_pass": d.percentPassFormatted
+        "percent_pass": d.percentPass
     }));
     const wsSummary = XLSX.utils.json_to_sheet(summaryData);
     wsSummary['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 15 }];
+    const range = XLSX.utils.decode_range(wsSummary['!ref']!);
+
+    // coluna 4 = percent_pass (começa do zero)
+    for (let row = range.s.r + 1; row <= range.e.r; row++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: 4 });
+      if (wsSummary[cellAddress]) {
+      wsSummary[cellAddress].t = 'n';
+      wsSummary[cellAddress].z = '0.00%';
+    }
+  }
     XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo por Dia");
 
     XLSX.writeFile(wb, filename);

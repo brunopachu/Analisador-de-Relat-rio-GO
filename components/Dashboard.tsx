@@ -74,7 +74,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
           {`Dia ${dateStr}`}
         </p>
         <p className="mb-1" style={{ color: '#002E5D' }}>
-          <span className="font-semibold">Cumprimento:</span> {item.percentPassFormatted}
+          <span className="font-semibold">Cumprimento:</span> {(item.percentPass * 100).toFixed(2)}%
         </p>
         <p style={{ color: '#4b5563' }}>
           <span className="font-semibold">Total Viagens:</span> {item.total}
@@ -108,7 +108,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
         return {
           totalProcessed: dayStats.total,
           totalFailures: dayStats.fail,
-          compliance: dayStats.percentPass.toFixed(2)
+          compliance: (dayStats.percentPass * 100).toFixed(2)
         };
       }
       return { totalProcessed: 0, totalFailures: 0, compliance: "0.00" };
@@ -288,12 +288,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
         </div>
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Charts Section - Using flex-col to stack charts vertically for full width */}
+      <div className="flex flex-col gap-8">
         {selectedDate === 'all' ? (
           <>
             {/* GLOBAL: Daily Performance Chart */}
-            <div className="bg-white shadow rounded-lg p-6">
+            <div className="bg-white shadow rounded-lg p-6 w-full">
               <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Performance Diária (% Cumprimento)</h3>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
@@ -321,11 +321,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
                       y={97} 
                       stroke="#dc2626" 
                       strokeDasharray="3 3" 
-                      label={{ value: '97%', position: 'top', fill: '#dc2626', fontSize: 12, fontWeight: 500 }} 
+                      label={{ value: 'Meta: 97%', position: 'top', fill: '#dc2626', fontSize: 12, fontWeight: 500 }} 
                     />
                     <Line 
                       type="monotone" 
-                      dataKey="percentPass" 
+                      dataKey={(data) => data.percentPass * 100}
                       name="Cumprimento" 
                       stroke="#002E5D" 
                       strokeWidth={3} 
@@ -338,7 +338,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
             </div>
 
             {/* GLOBAL: Failures vs Success Stacked Bar Chart */}
-            <div className="bg-white shadow rounded-lg p-6">
+            <div className="bg-white shadow rounded-lg p-6 w-full">
               <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Falhas vs Sucesso por Dia</h3>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
@@ -365,7 +365,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
         ) : (
           <>
              {/* DAILY: Hourly Failures Chart */}
-             <div className="bg-white shadow rounded-lg p-6 lg:col-span-2">
+             <div className="bg-white shadow rounded-lg p-6 w-full">
               <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
                 Distribuição de Falhas por Hora ({formatDate(selectedDate)})
               </h3>

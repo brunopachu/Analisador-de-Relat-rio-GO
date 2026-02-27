@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   LineChart, Line, BarChart, Bar, ReferenceLine
 } from 'recharts';
-import { AlertCircle, CheckCircle, FileText, Download, Bus, User, Calendar, Filter } from 'lucide-react';
+import { AlertCircle, CheckCircle, FileText, Download, Bus, User, Calendar, Filter, X } from 'lucide-react';
 import { downloadExcel } from '../utils/excelProcessor';
 
 interface DashboardProps {
@@ -91,8 +91,70 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
+const DataModal = ({ isOpen, onClose, title, data }: { isOpen: boolean; onClose: () => void; title: string; data: ProcessedRow[] }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fade-in">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-500 transition-colors">
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-4">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50 sticky top-0">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trip ID</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Veículo</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Condutor</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {data.map((row, idx) => (
+                <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(row.operational_date)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{row.trip_id}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.vehicle_ids}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.driver_ids}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{row.start_time_scheduled}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="p-4 border-t border-gray-200 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
+  const [modalState, setModalState] = useState<{ isOpen: boolean; title: string; data: ProcessedRow[] }>({
+    isOpen: false,
+    title: '',
+    data: []
+  });
+
+  const openModal = (title: string, data: ProcessedRow[]) => {
+    setModalState({ isOpen: true, title, data });
+  };
+
+  const closeModal = () => {
+    setModalState(prev => ({ ...prev, isOpen: false }));
+  };
 
   // 1. Calculate KPIs based on selection
   const kpiData = useMemo(() => {
@@ -132,22 +194,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
       };
     }
 
-    const carMap = new Map<string, number>();
-    const driverMap = new Map<string, number>();
+    const carMap = new Map<string, string[]>();
+    const driverMap = new Map<string, string[]>();
 
     filteredFailures.forEach(row => {
       const vid = String(row.vehicle_ids || "").trim();
-      if (vid && vid !== "(vazio)") carMap.set(vid, (carMap.get(vid) || 0) + 1);
+      if (vid && vid !== "(vazio)") {
+         if (!carMap.has(vid)) carMap.set(vid, []);
+         carMap.get(vid)!.push(row["TRIP ID New"]);
+      }
 
       const did = String(row.driver_ids || "").trim();
-      if (did && did !== "(vazio)") driverMap.set(did, (driverMap.get(did) || 0) + 1);
+      if (did && did !== "(vazio)") {
+        if (!driverMap.has(did)) driverMap.set(did, []);
+        driverMap.get(did)!.push(row["TRIP ID New"]);
+      }
     });
 
     const sortFn = (a: any, b: any) => b.count - a.count;
 
     return {
-      dynamicErrorsByCar: Array.from(carMap.entries()).map(([id, count]) => ({ id, count })).sort(sortFn),
-      dynamicErrorsByDriver: Array.from(driverMap.entries()).map(([id, count]) => ({ id, count })).sort(sortFn)
+      dynamicErrorsByCar: Array.from(carMap.entries()).map(([id, tripIds]) => ({ id, count: tripIds.length, tripIds })).sort(sortFn),
+      dynamicErrorsByDriver: Array.from(driverMap.entries()).map(([id, tripIds]) => ({ id, count: tripIds.length, tripIds })).sort(sortFn)
     };
   }, [filteredFailures, data, selectedDate]);
 
@@ -177,9 +245,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
   const yAxisMin = Math.floor(effectiveMin) - 1;
   const domainMin = yAxisMin < 0 ? 0 : yAxisMin;
 
+  const handleDailyBarClick = (entry: any) => {
+    if (entry) {
+        const date = entry.date;
+        const failuresForDay = data.mainData.filter(r => r.operational_date === date);
+        openModal(`Falhas do Dia ${formatDate(date)}`, failuresForDay);
+    }
+  };
+
+  const handleHourlyBarClick = (entry: any) => {
+      if (entry) {
+          const hour = entry.hour;
+          // Filter filteredFailures for this hour
+          const failuresForHour = filteredFailures.filter(row => {
+              const h = parseInt(row.start_time_scheduled.split(':')[0], 10);
+              return h === hour;
+          });
+          
+          openModal(`Falhas às ${entry.label} (${formatDate(selectedDate)})`, failuresForHour);
+      }
+  };
+
+  const handleTableItemClick = (type: 'vehicle' | 'driver', id: string, tripIds: string[]) => {
+      // We need to find the full rows for these tripIds to display in the modal
+      // Since tripIds are unique per day, but here we might have duplicates if 'all' days selected?
+      // Actually TRIP ID New is unique (trip_id + date).
+      
+      const rows = data.mainData.filter(r => tripIds.includes(r["TRIP ID New"]));
+      const title = type === 'vehicle' ? `Falhas do Veículo ${id}` : `Falhas do Condutor ${id}`;
+      openModal(title, rows);
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
       
+      <DataModal 
+        isOpen={modalState.isOpen} 
+        onClose={closeModal} 
+        title={modalState.title} 
+        data={modalState.data} 
+      />
+
       {/* Top Header & Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -356,7 +462,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
                     <Tooltip cursor={{fill: '#f3f4f6'}} content={<CustomTooltip />} />
                     <Legend />
                     <Bar dataKey="pass" name="Sucesso" stackId="a" fill="#10B981" />
-                    <Bar dataKey="fail" name="Falha" stackId="a" fill="#EF4444" />
+                    <Bar 
+                      dataKey="fail" 
+                      name="Falha" 
+                      stackId="a" 
+                      fill="#EF4444" 
+                      onClick={(data) => handleDailyBarClick(data)}
+                      cursor="pointer"
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -385,7 +498,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
                       contentStyle={{ backgroundColor: '#fff', borderColor: '#e5e7eb', color: '#1f2937' }}
                     />
                     <Legend />
-                    <Bar dataKey="count" name="Quantidade de Falhas" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                    <Bar 
+                      dataKey="count" 
+                      name="Quantidade de Falhas" 
+                      fill="#EF4444" 
+                      radius={[4, 4, 0, 0]} 
+                      onClick={(data) => handleHourlyBarClick(data)}
+                      cursor="pointer"
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -418,7 +538,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {dynamicErrorsByCar.length > 0 ? (
                   dynamicErrorsByCar.slice(0, 10).map((item, idx) => (
-                    <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <tr 
+                      key={item.id} 
+                      className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 cursor-pointer transition-colors`}
+                      onClick={() => handleTableItemClick('vehicle', item.id, item.tripIds)}
+                      title={`Trip IDs: ${item.tripIds.join(', ')}`}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.id}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{item.count}</td>
                     </tr>
@@ -455,7 +580,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {dynamicErrorsByDriver.length > 0 ? (
                   dynamicErrorsByDriver.slice(0, 10).map((item, idx) => (
-                    <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <tr 
+                      key={item.id} 
+                      className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 cursor-pointer transition-colors`}
+                      onClick={() => handleTableItemClick('driver', item.id, item.tripIds)}
+                      title={`Trip IDs: ${item.tripIds.join(', ')}`}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.id}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">{item.count}</td>
                     </tr>

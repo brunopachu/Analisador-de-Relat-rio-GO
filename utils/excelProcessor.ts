@@ -45,7 +45,12 @@ const analyzeRawData = (jsonData: RawRow[]): ProcessedData => {
   // 3. Transform Data (Reorder columns, Create TRIP ID New)
   const mainData: ProcessedRow[] = failures.map(row => {
     // Explicit string conversion for all fields that might be treated as numbers
-    const tripId = String(row.trip_id || "");
+    
+    // Extract Trip ID from Column D (index 3) as requested, instead of Column C
+    const rowKeys = Object.keys(row);
+    const rawTripId = rowKeys.length > 8 ? row[rowKeys[8]] : row.trip_id;
+    const tripId = String(rawTripId || "");
+
     const date = String(row.operational_date || "");
     
     // Python: .str.replace(r"\|.*?\|", "|X|", regex=True)
@@ -79,29 +84,35 @@ const analyzeRawData = (jsonData: RawRow[]): ProcessedData => {
   });
 
   // 4. Errors by Car
-  const carCountMap = new Map<string, number>();
-  failures.forEach(row => {
+  const carCountMap = new Map<string, string[]>();
+  mainData.forEach(row => {
       const vid = String(row.vehicle_ids || "").trim();
       // Skip empty or placeholder values
       if (vid && vid !== "(vazio)") {
-          carCountMap.set(vid, (carCountMap.get(vid) || 0) + 1);
+          if (!carCountMap.has(vid)) {
+            carCountMap.set(vid, []);
+          }
+          carCountMap.get(vid)!.push(row["TRIP ID New"]);
       }
   });
   const errorsByCar: ErrorCount[] = Array.from(carCountMap.entries())
-      .map(([id, count]) => ({ id, count }))
+      .map(([id, tripIds]) => ({ id, count: tripIds.length, tripIds }))
       .sort((a, b) => b.count - a.count);
 
   // 5. Errors by Driver
-  const driverCountMap = new Map<string, number>();
-  failures.forEach(row => {
+  const driverCountMap = new Map<string, string[]>();
+  mainData.forEach(row => {
       const did = String(row.driver_ids || "").trim();
       // Skip empty or placeholder values
       if (did && did !== "(vazio)") {
-          driverCountMap.set(did, (driverCountMap.get(did) || 0) + 1);
+          if (!driverCountMap.has(did)) {
+            driverCountMap.set(did, []);
+          }
+          driverCountMap.get(did)!.push(row["TRIP ID New"]);
       }
   });
   const errorsByDriver: ErrorCount[] = Array.from(driverCountMap.entries())
-      .map(([id, count]) => ({ id, count }))
+      .map(([id, tripIds]) => ({ id, count: tripIds.length, tripIds }))
       .sort((a, b) => b.count - a.count);
 
   return {

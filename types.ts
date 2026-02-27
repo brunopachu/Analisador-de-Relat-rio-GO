@@ -38,6 +38,7 @@ export interface ProcessedRow {
 export interface ErrorCount {
   id: string;
   count: number;
+  tripIds: string[];
 }
 
 export interface DaySummary {

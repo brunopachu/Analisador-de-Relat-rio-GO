@@ -281,7 +281,19 @@ export const processExcelData = async (file: File, secondaryFile?: File): Promis
   });
 };
 
-export const downloadExcel = (data: ProcessedData, filename: string = "Relatório_GO_filtrado.xlsx") => {
+export const downloadExcel = (data: ProcessedData) => {
+    let filename = "Relatório_GO_filtrado";
+    if (data.summaryByDay && data.summaryByDay.length > 0) {
+        const firstDate = data.summaryByDay[0].date;
+        const lastDate = data.summaryByDay[data.summaryByDay.length - 1].date;
+        if (firstDate === lastDate) {
+             filename += `_${firstDate}`;
+        } else {
+             filename += `_${firstDate}_a_${lastDate}`;
+        }
+    }
+    filename += ".xlsx";
+
     const wb = XLSX.utils.book_new();
 
     const applyProfessionalFormatting = (ws: XLSX.WorkSheet) => {

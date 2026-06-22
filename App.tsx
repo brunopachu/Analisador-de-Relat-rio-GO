@@ -11,13 +11,13 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = async (mainFile: File, secondaryFile?: File) => {
     setLoading(true);
     setError(null);
     setData(null);
 
     try {
-      const processed = await processExcelData(file);
+      const processed = await processExcelData(mainFile, secondaryFile);
       setData(processed);
     } catch (err) {
       console.error(err);
@@ -60,7 +60,7 @@ function App() {
           </div>
         )}
 
-        {data && <Dashboard data={data} />}
+        {data && <Dashboard data={data} onReset={() => setData(null)} />}
       </main>
 
       {/* Footer */}

@@ -4,11 +4,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   LineChart, Line, BarChart, Bar, ReferenceLine
 } from 'recharts';
-import { AlertCircle, CheckCircle, FileText, Download, Bus, User, Calendar, Filter, X } from 'lucide-react';
+import { AlertCircle, CheckCircle, FileText, Download, Bus, User, Calendar, Filter, X, RefreshCw } from 'lucide-react';
 import { downloadExcel } from '../utils/excelProcessor';
 
 interface DashboardProps {
   data: ProcessedData;
+  onReset: () => void;
 }
 
 // Helper to format date for display
@@ -140,7 +141,7 @@ const DataModal = ({ isOpen, onClose, title, data }: { isOpen: boolean; onClose:
   );
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ data, onReset }) => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [modalState, setModalState] = useState<{ isOpen: boolean; title: string; data: ProcessedRow[] }>({
     isOpen: false,
@@ -321,6 +322,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ data }) => {
             </div>
           </div>
 
+          <button
+            onClick={onReset}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Nova Análise
+          </button>
+          
           <button
             onClick={() => downloadExcel(data)}
             className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"

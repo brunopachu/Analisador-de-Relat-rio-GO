@@ -6,7 +6,7 @@ import { RawRow, ProcessedData, DaySummary, ErrorCount, ProcessedRow } from '../
  * Core logic to transform raw JSON data into the Dashboard structure.
  * This is separated from the file parsing to support multiple parsers (XLSX and CSV).
  */
-const analyzeRawData = (jsonData: RawRow[]): ProcessedData => {
+const analyzeRawData = (jsonData: RawRow[], tripMap: Map<string, {fleetNumber: string, employeeId: string}>): ProcessedData => {
   // 1. Calculate Summary per Day (using FULL dataset)
   const summaryMap = new Map<string, { pass: number; fail: number }>();
 
@@ -56,13 +56,26 @@ const analyzeRawData = (jsonData: RawRow[]): ProcessedData => {
     // Python: .str.replace(r"\|.*?\|", "|X|", regex=True)
     const tripIdNew = tripId.replace(/\|.*?\|/g, "|X|") + "_" + date;
 
+    let vehicleId = String(row.vehicle_ids || "").trim();
+    let driverId = String(row.driver_ids || "").trim();
+
+    if (tripMap.has(tripIdNew)) {
+        const mappedData = tripMap.get(tripIdNew)!;
+        if (!vehicleId || vehicleId === "(vazio)") {
+            vehicleId = mappedData.fleetNumber;
+        }
+        if (!driverId || driverId === "(vazio)") {
+            driverId = mappedData.employeeId;
+        }
+    }
+
     return {
       "operational_date": date,
       "pattern_id": String(row.pattern_id || ""),
       "TRIP ID New": tripIdNew,
       "trip_id": tripId,
-      "vehicle_ids": String(row.vehicle_ids || ""),
-      "driver_ids": String(row.driver_ids || ""),
+      "vehicle_ids": vehicleId,
+      "driver_ids": driverId,
       "passengers_observed": String(row.passengers_observed || ""),
       "start_time_scheduled": String(row.start_time_scheduled || ""),
       "start_time_observed": String(row.start_time_observed || ""),
@@ -123,7 +136,100 @@ const analyzeRawData = (jsonData: RawRow[]): ProcessedData => {
   };
 };
 
-export const processExcelData = (file: File): Promise<ProcessedData> => {
+const parseSecondaryFile = (file: File): Promise<Map<string, {fleetNumber: string, employeeId: string}>> => {
+    return new Promise((resolve, reject) => {
+        const tripMap = new Map<string, {fleetNumber: string, employeeId: string}>();
+
+        const processRows = (rows: any[][]) => {
+            // rows is array of arrays [ [colA, colB, colC...], ... ]
+            // Skip header (i=0)
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || row.length < 19) continue; // Need at least up to Col S (18)
+
+                const fleetNumber = String(row[1] || "").trim(); // Col B
+                const employeeId = String(row[2] || "").trim(); // Col C
+
+                // Try to find GtfsTripID in G (6) or H (7)
+                let gtfsTripId = String(row[6] || "").trim();
+                if (!gtfsTripId.includes('|')) {
+                    gtfsTripId = String(row[7] || "").trim();
+                }
+
+                if (!gtfsTripId || (!fleetNumber && !employeeId)) continue;
+
+                // Time from Col S (18)  e.g., "2025-09-01 02:30:00"
+                const dateTimeStr = String(row[18] || "").trim(); // YYYY-MM-DD HH:MM:SS
+                if (dateTimeStr.length < 13) continue;
+
+                const year = parseInt(dateTimeStr.substring(0, 4), 10);
+                const month = parseInt(dateTimeStr.substring(5, 7), 10);
+                const day = parseInt(dateTimeStr.substring(8, 10), 10);
+                const hour = parseInt(dateTimeStr.substring(11, 13), 10);
+
+                if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour)) continue;
+
+                // Adjust date if hour is between 0 and 3
+                let opDateObj = new Date(year, month - 1, day);
+                if (hour >= 0 && hour <= 3) {
+                    opDateObj.setDate(opDateObj.getDate() - 1);
+                }
+
+                const opYear = opDateObj.getFullYear();
+                const opMonth = String(opDateObj.getMonth() + 1).padStart(2, '0');
+                const opDay = String(opDateObj.getDate()).padStart(2, '0');
+                const opDateStr = `${opYear}${opMonth}${opDay}`;
+
+                // Extract parts from GtfsTripId: 4602_0_1|100|0435 -> 4602_0_1|X|0435
+                const tripBase = gtfsTripId.replace(/\|.*?\|/g, "|X|");
+                
+                const newTripId = `${tripBase}_${opDateStr}`;
+                tripMap.set(newTripId, { fleetNumber, employeeId });
+            }
+            resolve(tripMap);
+        };
+
+        const fileName = file.name.toLowerCase();
+        if (fileName.endsWith('.csv')) {
+            Papa.parse(file, {
+                header: false,
+                skipEmptyLines: true,
+                complete: (results) => {
+                   processRows(results.data as any[][]);
+                },
+                error: reject
+            });
+        } else {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                   const data = e.target?.result;
+                   const workbook = XLSX.read(data, { type: 'array' });
+                   const firstSheetName = workbook.SheetNames[0];
+                   const worksheet = workbook.Sheets[firstSheetName];
+                   const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+                   processRows(rows as any[][]);
+                } catch (err) {
+                   reject(err);
+                }
+            };
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        }
+    });
+};
+
+export const processExcelData = async (file: File, secondaryFile?: File): Promise<ProcessedData> => {
+  let tripMap = new Map<string, {fleetNumber: string, employeeId: string}>();
+  
+  if (secondaryFile) {
+    try {
+        tripMap = await parseSecondaryFile(secondaryFile);
+    } catch (e) {
+        console.error("Failed to parse secondary file:", e);
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const fileName = file.name.toLowerCase();
 
@@ -135,7 +241,7 @@ export const processExcelData = (file: File): Promise<ProcessedData> => {
         complete: (results) => {
           try {
             // results.data contains the array of objects
-            const processed = analyzeRawData(results.data as RawRow[]);
+            const processed = analyzeRawData(results.data as RawRow[], tripMap);
             resolve(processed);
           } catch (err) {
             reject(err);
@@ -162,7 +268,7 @@ export const processExcelData = (file: File): Promise<ProcessedData> => {
         // Read raw data
         const jsonData: RawRow[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
         
-        const processed = analyzeRawData(jsonData);
+        const processed = analyzeRawData(jsonData, tripMap);
         resolve(processed);
 
       } catch (err) {
@@ -178,23 +284,32 @@ export const processExcelData = (file: File): Promise<ProcessedData> => {
 export const downloadExcel = (data: ProcessedData, filename: string = "Relatório_GO_filtrado.xlsx") => {
     const wb = XLSX.utils.book_new();
 
+    const applyProfessionalFormatting = (ws: XLSX.WorkSheet) => {
+        if (!ws || !ws['!ref']) return;
+        ws['!autofilter'] = { ref: ws['!ref'] };
+        ws['!views'] = [{ state: 'frozen', xSplit: 0, ySplit: 1, activeCell: 'A2' }];
+    };
+
     // Sheet 1: Main Data (Failures)
     const wsMain = XLSX.utils.json_to_sheet(data.mainData);
     // Attempt to set column widths roughly based on content
     const wscols = Object.keys(data.mainData[0] || {}).map(() => ({ wch: 20 }));
     wsMain['!cols'] = wscols;
+    applyProfessionalFormatting(wsMain);
     XLSX.utils.book_append_sheet(wb, wsMain, "Sheet1");
 
     // Sheet 2: Erros por Carro
     const carData = data.errorsByCar.map(d => ({ "vehicle_ids": d.id, "erros": d.count }));
     const wsCar = XLSX.utils.json_to_sheet(carData);
     wsCar['!cols'] = [{ wch: 25 }, { wch: 10 }];
+    applyProfessionalFormatting(wsCar);
     XLSX.utils.book_append_sheet(wb, wsCar, "Erros por Carro");
 
     // Sheet 3: Erros por Condutor
     const driverData = data.errorsByDriver.map(d => ({ "driver_ids": d.id, "erros": d.count }));
     const wsDriver = XLSX.utils.json_to_sheet(driverData);
     wsDriver['!cols'] = [{ wch: 25 }, { wch: 10 }];
+    applyProfessionalFormatting(wsDriver);
     XLSX.utils.book_append_sheet(wb, wsDriver, "Erros por Condutor");
 
     // Sheet 4: Resumo por Dia
@@ -217,6 +332,7 @@ export const downloadExcel = (data: ProcessedData, filename: string = "Relatóri
       wsSummary[cellAddress].z = '0.00%';
     }
   }
+    applyProfessionalFormatting(wsSummary);
     XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo por Dia");
 
     XLSX.writeFile(wb, filename);

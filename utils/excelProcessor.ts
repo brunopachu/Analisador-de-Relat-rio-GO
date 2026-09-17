@@ -3,6 +3,26 @@ import Papa from 'papaparse';
 import { RawRow, ProcessedData, DaySummary, ErrorCount, ProcessedRow } from '../types';
 
 /**
+ * Extracts the operational date (YYYYMMDD) embedded in the "_id" field.
+ * Example: "F1M13-44-20260827-4701_0_1|2700|0400" -> "20260827"
+ * The date always appears as an 8-digit block surrounded by hyphens.
+ */
+const extractDateFromId = (id: string): string => {
+  const match = id.match(/-(\d{8})-/);
+  return match ? match[1] : "";
+};
+
+/**
+ * Returns the operational_date for a row, falling back to parsing it out of
+ * the "_id" field when operational_date comes in blank in the new file format.
+ */
+const getOperationalDate = (row: RawRow): string => {
+  const direct = String(row.operational_date || "").trim();
+  if (direct) return direct;
+  return extractDateFromId(String(row._id || ""));
+};
+
+/**
  * Core logic to transform raw JSON data into the Dashboard structure.
  * This is separated from the file parsing to support multiple parsers (XLSX and CSV).
  */
@@ -11,11 +31,13 @@ const analyzeRawData = (jsonData: RawRow[], tripMap: Map<string, {fleetNumber: s
   const summaryMap = new Map<string, { pass: number; fail: number }>();
 
   jsonData.forEach(row => {
-    // Cast to string to avoid runtime type errors
-    const date = String(row.operational_date || "");
+    // Cast to string to avoid runtime type errors; falls back to parsing
+    // the date out of "_id" when operational_date is blank.
+    const date = getOperationalDate(row);
     if (!date) return;
 
-    const analysis = String(row.analysis_SIMPLE_THREE_VEHICLE_EVENTS || "");
+    // Renamed from "analysis_SIMPLE_THREE_VEHICLE_EVENTS" -> "SIMPLE_THREE_VEHICLE_EVENTS-grade"
+    const analysis = String(row["SIMPLE_THREE_VEHICLE_EVENTS-grade"] || "");
     
     if (!summaryMap.has(date)) {
       summaryMap.set(date, { pass: 0, fail: 0 });
@@ -40,18 +62,20 @@ const analyzeRawData = (jsonData: RawRow[], tripMap: Map<string, {fleetNumber: s
   }).sort((a, b) => a.date.localeCompare(b.date));
 
   // 2. Filter for Failures
-  const failures = jsonData.filter(r => String(r.analysis_SIMPLE_THREE_VEHICLE_EVENTS) === 'fail');
+  // Renamed from "analysis_SIMPLE_THREE_VEHICLE_EVENTS" -> "SIMPLE_THREE_VEHICLE_EVENTS-grade"
+  const failures = jsonData.filter(r => String(r["SIMPLE_THREE_VEHICLE_EVENTS-grade"]) === 'fail');
 
   // 3. Transform Data (Reorder columns, Create TRIP ID New)
   const mainData: ProcessedRow[] = failures.map(row => {
     // Explicit string conversion for all fields that might be treated as numbers
     
-    // Extract Trip ID from Column D (index 3) as requested, instead of Column C
-    const rowKeys = Object.keys(row);
-    const rawTripId = rowKeys.length > 8 ? row[rowKeys[8]] : row.trip_id;
-    const tripId = String(rawTripId || "");
+    // Trip ID is now read directly from the "trip_id" column.
+    // (Previously extracted by position via rowKeys[8], which relied on the
+    // old column order where index 8 happened to be "trip_id" - no longer
+    // valid with the new column sequence.)
+    const tripId = String(row.trip_id || "");
 
-    const date = String(row.operational_date || "");
+    const date = getOperationalDate(row);
     
     // Python: .str.replace(r"\|.*?\|", "|X|", regex=True)
     const tripIdNew = tripId.replace(/\|.*?\|/g, "|X|") + "_" + date;
@@ -76,15 +100,20 @@ const analyzeRawData = (jsonData: RawRow[], tripMap: Map<string, {fleetNumber: s
       "trip_id": tripId,
       "vehicle_ids": vehicleId,
       "driver_ids": driverId,
-      "passengers_observed": String(row.passengers_observed || ""),
+      // "passengers_observed" no longer exists in the new column set;
+      // sourced from "validations_count" per instruction.
+      "passengers_observed": String(row.validations_count || ""),
       "start_time_scheduled": String(row.start_time_scheduled || ""),
       "start_time_observed": String(row.start_time_observed || ""),
       "end_time_scheduled": String(row.end_time_scheduled || ""),
       "end_time_observed": String(row.end_time_observed || ""),
-      "analysis_SIMPLE_THREE_VEHICLE_EVENTS": String(row.analysis_SIMPLE_THREE_VEHICLE_EVENTS || ""),
-      "analysis_SIMPLE_THREE_VEHICLE_EVENTS_reason": String(row.analysis_SIMPLE_THREE_VEHICLE_EVENTS_reason || ""),
-      "justification_cause": String(row.justification_cause || ""),
-      "pto_message": String(row.pto_message || "")
+      // Renamed from "analysis_SIMPLE_THREE_VEHICLE_EVENTS(_reason)" ->
+      // "SIMPLE_THREE_VEHICLE_EVENTS-grade" / "-reason"
+      "analysis_SIMPLE_THREE_VEHICLE_EVENTS": String(row["SIMPLE_THREE_VEHICLE_EVENTS-grade"] || ""),
+      "analysis_SIMPLE_THREE_VEHICLE_EVENTS_reason": String(row["SIMPLE_THREE_VEHICLE_EVENTS-reason"] || ""),
+      // No equivalent column exists in the new format; left empty.
+      "justification_cause": "",
+      "pto_message": ""
     };
   });
 
